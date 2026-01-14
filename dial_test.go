@@ -15,11 +15,11 @@ func TestPing(t *testing.T) {
 		prefix = "MCPE"
 	)
 
-	data, err := raknet.Ping(addr)
+	data, _, err := raknet.Ping(addr)
 	if err != nil {
 		t.Fatalf("error pinging %v: %v", addr, err)
 	}
-	str := string(data)
+	str := string(data.Data)
 	if !strings.HasPrefix(str, prefix) {
 		t.Fatalf("ping data should have prefix %v, but got %v", prefix, str)
 	}
@@ -43,11 +43,11 @@ func TestPingWithCustomDialer(t *testing.T) {
 		},
 	}
 
-	data, err := dialer.Ping(addr)
+	data, _, err := dialer.Ping(addr)
 	if err != nil {
 		t.Fatalf("error pinging %v: %v", addr, err)
 	}
-	str := string(data)
+	str := string(data.Data)
 	if !strings.HasPrefix(str, prefix) {
 		t.Fatalf("ping data should have prefix %v, but got %v", prefix, str)
 	}

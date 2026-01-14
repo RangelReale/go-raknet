@@ -2,6 +2,7 @@ package raknet_test
 
 import (
 	"fmt"
+
 	"github.com/sandertv/go-raknet"
 )
 
@@ -10,11 +11,11 @@ func ExamplePing() {
 
 	// Ping the target address. This will ping with a timeout of 5 seconds. raknet.PingContext and
 	// raknet.PingTimeout may be used to cancel at any other time.
-	data, err := raknet.Ping(address)
+	data, _, err := raknet.Ping(address)
 	if err != nil {
 		panic("error pinging " + address + ": " + err.Error())
 	}
-	str := string(data)
+	str := string(data.Data)
 
 	fmt.Println(str[:4])
 	// Output: MCPE

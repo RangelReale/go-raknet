@@ -152,50 +152,24 @@ func (dialer Dialer) PingOpenConnectionsContext(ctx context.Context, address str
 	return dialer.pingContext(ctx, address, data)
 }
 
-func (dialer Dialer) pingContext2(ctx context.Context, address string, data []byte) (response []byte, err error) {
-	conn, err := dialer.dial(ctx, address)
-	if err != nil {
-		return nil, dialer.error("ping", err)
-	}
-	defer conn.Close()
-
-	if _, err := conn.Write(data); err != nil {
-		return nil, dialer.error("ping", err)
-	}
-
-	data = make([]byte, 1492)
-	n, err := conn.Read(data)
-	if err != nil {
-		return nil, dialer.error("ping", err)
-	}
-	if n == 0 || data[0] != message.IDUnconnectedPong {
-		return nil, dialer.error("ping", fmt.Errorf("non-pong packet found (id = %v)", data[0]))
-	}
-	pong := &message.UnconnectedPong{}
-	if err := pong.UnmarshalBinary(data[1:n]); err != nil {
-		return nil, dialer.error("ping", fmt.Errorf("read unconnected pong: %w", err))
-	}
-	return pong.Data, nil
-}
-
 func (dialer Dialer) pingContext(ctx context.Context, address string, data []byte) (*message.UnconnectedPong, net.Addr, error) {
 	remote, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return nil, nil, dialer.error("resolve", err)
 	}
 
-	conn, err := net.ListenUDP("udp", nil)
+	conn, err := (&net.ListenConfig{}).ListenPacket(ctx, "udp", "")
 	if err != nil {
 		return nil, nil, dialer.error("ping", err)
 	}
 	defer conn.Close()
 
-	if _, err := conn.WriteToUDP(data, remote); err != nil {
+	if _, err := conn.WriteTo(data, remote); err != nil {
 		return nil, nil, dialer.error("ping", err)
 	}
 
 	data = make([]byte, 1492)
-	n, addr, err := conn.ReadFromUDP(data)
+	n, addr, err := conn.ReadFrom(data)
 	if err != nil {
 		return nil, nil, dialer.error("ping", err)
 	}
