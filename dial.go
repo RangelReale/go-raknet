@@ -54,6 +54,11 @@ func PingContext(ctx context.Context, address string) (*message.UnconnectedPong,
 	return d.PingContext(ctx, address)
 }
 
+func PingOpenConnectionsContext(ctx context.Context, address string) (*message.UnconnectedPong, net.Addr, error) {
+	var d Dialer
+	return d.PingOpenConnectionsContext(ctx, address)
+}
+
 // Dial attempts to dial a RakNet connection to the address passed. The address
 // may be either an IP address or a hostname, combined with a port that is
 // separated with ':'. Dial will attempt to dial a connection within 10
