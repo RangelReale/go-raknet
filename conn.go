@@ -381,7 +381,7 @@ func (conn *Conn) Latency() time.Duration {
 // send encodes an encoding.BinaryMarshaler and writes it to the Conn.
 func (conn *Conn) send(pk encoding.BinaryMarshaler) error {
 	b, _ := pk.MarshalBinary()
-	conn.handler.log().Debug("conn send", "message", pk, "message_len", len(b))
+	conn.handler.log().Debug("conn send", "message", pk, "typ", fmt.Sprintf("%T", pk), "message_len", len(b))
 	fmt.Println(hex.Dump(b))
 	_, err := conn.Write(b)
 	return err
@@ -391,6 +391,7 @@ func (conn *Conn) send(pk encoding.BinaryMarshaler) error {
 // unreliable reliability.
 func (conn *Conn) sendUnreliable(pk encoding.BinaryMarshaler) error {
 	b, _ := pk.MarshalBinary()
+	conn.handler.log().Debug("conn send unreliable", "message", pk, "typ", fmt.Sprintf("%T", pk), "message_len", len(b))
 	_, err := conn.writeWithReliability(b, reliabilityUnreliable)
 	return err
 }

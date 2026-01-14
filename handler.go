@@ -223,6 +223,7 @@ func (h dialerConnectionHandler) limitsEnabled() bool {
 }
 
 func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err error) {
+	h.log().Debug("received packet", "id", fmt.Sprintf("0x%x", b[0]))
 	switch b[0] {
 	case message.IDConnectionRequest:
 		return true, errUnexpectedCR
@@ -252,6 +253,7 @@ func (h dialerConnectionHandler) handleConnectionRequestAccepted(conn *Conn, b [
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTION_REQUEST_ACCEPTED: %w", err)
 	}
+	h.log().Debug("packet: connection accepted", "message", pk)
 	select {
 	case <-conn.connected:
 		return errUnexpectedAdditionalCRA
