@@ -100,10 +100,10 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest1(b []byte, addr n
 	}
 	mtuSize := min(pk.MTU, maxMTUSize)
 
-	if pk.ClientProtocol != protocolVersion {
-		data, _ := (&message.IncompatibleProtocolVersion{ServerGUID: h.l.id, ServerProtocol: protocolVersion}).MarshalBinary()
+	if pk.ClientProtocol != h.l.conf.ProtocolVersion {
+		data, _ := (&message.IncompatibleProtocolVersion{ServerGUID: h.l.id, ServerProtocol: h.l.conf.ProtocolVersion}).MarshalBinary()
 		_, _ = h.l.conn.WriteTo(data, addr)
-		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_1: incompatible protocol version %v (listener protocol = %v)", pk.ClientProtocol, protocolVersion)
+		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_1: incompatible protocol version %v (listener protocol = %v)", pk.ClientProtocol, h.l.conf.ProtocolVersion)
 	}
 
 	data, _ := (&message.OpenConnectionReply1{ServerGUID: h.l.id, Cookie: h.cookie(addr, h.cookieSalt.Load()), ServerHasSecurity: !h.l.conf.DisableCookies, MTU: mtuSize}).MarshalBinary()

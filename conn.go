@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -21,7 +22,7 @@ import (
 const (
 	// protocolVersion is the current RakNet protocol version. This is Minecraft
 	// specific.
-	protocolVersion byte = 11
+	defaultProtocolVersion byte = 11
 
 	minMTUSize    = 400
 	maxMTUSize    = 1492
@@ -380,6 +381,8 @@ func (conn *Conn) Latency() time.Duration {
 // send encodes an encoding.BinaryMarshaler and writes it to the Conn.
 func (conn *Conn) send(pk encoding.BinaryMarshaler) error {
 	b, _ := pk.MarshalBinary()
+	conn.handler.log().Debug("conn send", "message", pk, "message_len", len(b))
+	fmt.Println(hex.Dump(b))
 	_, err := conn.Write(b)
 	return err
 }

@@ -105,6 +105,10 @@ type Dialer struct {
 	// Default is 10. -1 means no limit.
 	// This is only used for the initial connection handshake.
 	MaxTransientErrors int
+
+	ProtocolVersion byte
+
+	Password string
 }
 
 // Ping sends a ping to an address and returns the response obtained. If
@@ -226,6 +230,9 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 	if dialer.MaxTransientErrors == 0 {
 		dialer.MaxTransientErrors = 10
 	}
+	if dialer.ProtocolVersion == 0 {
+		dialer.ProtocolVersion = defaultProtocolVersion
+	}
 
 	conn, err := dialer.dial(ctx, address)
 	if err != nil {
@@ -237,6 +244,8 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 		conn:               conn,
 		raddr:              conn.RemoteAddr(),
 		id:                 atomic.AddInt64(&dialerID, 1),
+		protocolVersion:    dialer.ProtocolVersion,
+		errorLog:           dialer.ErrorLog,
 		ticker:             time.NewTicker(time.Second / 2),
 		maxTransientErrors: dialer.MaxTransientErrors,
 	}
@@ -252,8 +261,10 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 // dial finishes the RakNet connection sequence and returns a Conn if
 // successful.
 func (dialer Dialer) connect(ctx context.Context, state *connState) (*Conn, error) {
+	dialer.ErrorLog.Debug("connect")
+
 	conn := newConn(internal.ConnToPacketConn(state.conn), state.raddr, state.mtu, dialerConnectionHandler{l: dialer.ErrorLog})
-	if err := conn.send((&message.ConnectionRequest{ClientGUID: state.id, RequestTime: timestamp()})); err != nil {
+	if err := conn.send((&message.ConnectionRequest{ClientGUID: state.id, RequestTime: timestamp(), Password: dialer.Password})); err != nil {
 		return nil, dialer.error("dial", fmt.Errorf("send connection request: %w", err))
 	}
 
@@ -295,9 +306,11 @@ func (dialer Dialer) clientListen(rakConn *Conn, conn net.Conn) {
 // connState represents a state of a connection before the connection is
 // finalised. It holds some data collected during the connection.
 type connState struct {
-	conn  net.Conn
-	raddr net.Addr
-	id    int64
+	conn            net.Conn
+	raddr           net.Addr
+	id              int64
+	protocolVersion byte
+	errorLog        *slog.Logger
 
 	// mtu is the final MTU size found by sending an open connection request
 	// 1 packet. It is the MTU size sent by the server.
@@ -318,6 +331,8 @@ var mtuSizes = []uint16{1492, 1200, 576}
 // can send, by sending multiple open connection request 1 packets to the
 // server with a decreasing MTU size padding.
 func (state *connState) discoverMTU(ctx context.Context) error {
+	state.errorLog.Debug("discover mtu")
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -333,6 +348,7 @@ func (state *connState) discoverMTU(ctx context.Context) error {
 				state.transientErrorCount++
 				continue
 			}
+			state.errorLog.Error("[read] open connection request 1", "error", err)
 			state.close()
 			return err
 		}
@@ -345,6 +361,10 @@ func (state *connState) discoverMTU(ctx context.Context) error {
 			if err := response.UnmarshalBinary(b[1:n]); err != nil {
 				return fmt.Errorf("read open connection reply 1: %w", err)
 			}
+			state.errorLog.Debug("[read] open connection request 1",
+				"message", "IDOpenConnectionReply1",
+				"data", response)
+
 			state.serverSecurity, state.cookie = response.ServerHasSecurity, response.Cookie
 			if response.ServerGUID == 0 || response.MTU < 400 || response.MTU > 1500 {
 				// This is an awful hack we cooked up to deal with OVH 'DDoS'
@@ -361,7 +381,10 @@ func (state *connState) discoverMTU(ctx context.Context) error {
 			if err := response.UnmarshalBinary(b[1:n]); err != nil {
 				return fmt.Errorf("read incompatible protocol version: %w", err)
 			}
-			return fmt.Errorf("mismatched protocol: client protocol = %v, server protocol = %v", protocolVersion, response.ServerProtocol)
+			state.errorLog.Debug("[read] open connection request 1",
+				"message", "IDIncompatibleProtocolVersion",
+				"data", response)
+			return fmt.Errorf("mismatched protocol: client protocol = %v, server protocol = %v", state.protocolVersion, response.ServerProtocol)
 		}
 	}
 }
@@ -386,6 +409,8 @@ func (state *connState) request1(ctx context.Context, sizes []uint16) {
 // openConnection sends open connection request 2 packets continuously
 // until it receives an open connection reply 2 packet from the server.
 func (state *connState) openConnection(ctx context.Context) error {
+	state.errorLog.Debug("open connection")
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -401,6 +426,7 @@ func (state *connState) openConnection(ctx context.Context) error {
 				state.transientErrorCount++
 				continue
 			}
+			state.errorLog.Error("[read] open connection request 2", "error", err)
 			state.close()
 			return err
 		}
@@ -414,6 +440,7 @@ func (state *connState) openConnection(ctx context.Context) error {
 		if err = pk.UnmarshalBinary(b[1:n]); err != nil {
 			return fmt.Errorf("read open connection reply 2: %w", err)
 		}
+		state.errorLog.Debug("[read] open connection request 2", "message", pk)
 		state.mtu = pk.MTU
 		return nil
 	}
@@ -436,20 +463,24 @@ func (state *connState) request2(ctx context.Context, mtu uint16) {
 // openConnectionRequest1 sends an open connection request 1 packet to the
 // server. If not successful, an error is returned.
 func (state *connState) openConnectionRequest1(mtu uint16) {
-	data, _ := (&message.OpenConnectionRequest1{ClientProtocol: protocolVersion, MTU: mtu}).MarshalBinary()
+	req := &message.OpenConnectionRequest1{ClientProtocol: state.protocolVersion, MTU: mtu}
+	state.errorLog.Debug("[write] open connection request 1", "data", req)
+	data, _ := req.MarshalBinary()
 	_, _ = state.conn.Write(data)
 }
 
 // openConnectionRequest2 sends an open connection request 2 packet to the
 // server. If not successful, an error is returned.
 func (state *connState) openConnectionRequest2(mtu uint16) {
-	data, _ := (&message.OpenConnectionRequest2{
+	req := &message.OpenConnectionRequest2{
 		ServerAddress:     resolve(state.raddr),
 		MTU:               mtu,
 		ClientGUID:        state.id,
 		ServerHasSecurity: state.serverSecurity,
 		Cookie:            state.cookie,
-	}).MarshalBinary()
+	}
+	state.errorLog.Debug("[write] open connection request 2", "data", req)
+	data, _ := req.MarshalBinary()
 	_, _ = state.conn.Write(data)
 }
 

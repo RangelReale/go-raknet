@@ -10,6 +10,7 @@ type ConnectionRequest struct {
 	// RequestTime is a timestamp from the moment the packet is sent.
 	RequestTime int64
 	Secure      bool
+	Password    string
 }
 
 func (pk *ConnectionRequest) UnmarshalBinary(data []byte) error {
@@ -23,12 +24,20 @@ func (pk *ConnectionRequest) UnmarshalBinary(data []byte) error {
 }
 
 func (pk *ConnectionRequest) MarshalBinary() (data []byte, err error) {
-	b := make([]byte, 18)
+	psize := 18
+	if pk.Password != "" {
+		psize += len(pk.Password)
+	}
+
+	b := make([]byte, psize)
 	b[0] = IDConnectionRequest
 	binary.BigEndian.PutUint64(b[1:], uint64(pk.ClientGUID))
 	binary.BigEndian.PutUint64(b[9:], uint64(pk.RequestTime))
 	if pk.Secure {
 		b[17] = 1
+	}
+	if pk.Password != "" {
+		copy(b[18:], []byte(pk.Password))
 	}
 	return b, nil
 }

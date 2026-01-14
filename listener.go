@@ -41,6 +41,8 @@ type ListenConfig struct {
 	// BlockDuration defaults to 10s. If set to a negative value, IP addresses
 	// are never blocked on errors.
 	BlockDuration time.Duration
+
+	ProtocolVersion byte
 }
 
 // Listener implements a RakNet connection listener. It follows the same
@@ -85,6 +87,9 @@ func (conf ListenConfig) Listen(address string) (*Listener, error) {
 		conf.ErrorLog = slog.New(internal.DiscardHandler{})
 	}
 	conf.ErrorLog = conf.ErrorLog.With("src", "listener")
+	if conf.ProtocolVersion == 0 {
+		conf.ProtocolVersion = defaultProtocolVersion
+	}
 
 	if conf.BlockDuration == 0 {
 		conf.BlockDuration = time.Second * 10
