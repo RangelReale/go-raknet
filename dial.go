@@ -164,6 +164,10 @@ func (dialer Dialer) pingContext(ctx context.Context, address string, data []byt
 	}
 	defer conn.Close()
 
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+
 	if _, err := conn.WriteTo(data, remote); err != nil {
 		return nil, nil, dialer.error("ping", err)
 	}
