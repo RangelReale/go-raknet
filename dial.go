@@ -26,7 +26,7 @@ type UpstreamDialer interface {
 // the packet sent to the server may be lost due to the nature of UDP. If this
 // is the case, an error is returned which implies a timeout occurred. Ping
 // will time out after 5 seconds.
-func Ping(address string) (response []byte, err error) {
+func Ping(address string) (*message.UnconnectedPong, net.Addr, error) {
 	var d Dialer
 	return d.Ping(address)
 }
@@ -37,7 +37,7 @@ func Ping(address string) (response []byte, err error) {
 // the packet sent to the server may be lost due to the nature of UDP. If this
 // is the case, an error is returned which implies a timeout occurred.
 // PingTimeout will time out after the duration passed.
-func PingTimeout(address string, timeout time.Duration) ([]byte, error) {
+func PingTimeout(address string, timeout time.Duration) (*message.UnconnectedPong, net.Addr, error) {
 	var d Dialer
 	return d.PingTimeout(address, timeout)
 }
@@ -49,7 +49,7 @@ func PingTimeout(address string, timeout time.Duration) ([]byte, error) {
 // is the case, PingContext could last indefinitely, hence a timeout should
 // always be attached to the context passed. PingContext cancels as soon as the
 // deadline expires.
-func PingContext(ctx context.Context, address string) (response []byte, err error) {
+func PingContext(ctx context.Context, address string) (*message.UnconnectedPong, net.Addr, error) {
 	var d Dialer
 	return d.PingContext(ctx, address)
 }
@@ -117,7 +117,7 @@ type Dialer struct {
 // the packet sent to the server may be lost due to the nature of UDP. If this
 // is the case, an error is returned which implies a timeout occurred. Ping
 // will time out after 5 seconds.
-func (dialer Dialer) Ping(address string) ([]byte, error) {
+func (dialer Dialer) Ping(address string) (*message.UnconnectedPong, net.Addr, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	return dialer.PingContext(ctx, address)
@@ -129,7 +129,7 @@ func (dialer Dialer) Ping(address string) ([]byte, error) {
 // the packet sent to the server may be lost due to the nature of UDP. If this
 // is the case, an error is returned which implies a timeout occurred.
 // PingTimeout will time out after the duration passed.
-func (dialer Dialer) PingTimeout(address string, timeout time.Duration) ([]byte, error) {
+func (dialer Dialer) PingTimeout(address string, timeout time.Duration) (*message.UnconnectedPong, net.Addr, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return dialer.PingContext(ctx, address)
@@ -142,17 +142,17 @@ func (dialer Dialer) PingTimeout(address string, timeout time.Duration) ([]byte,
 // is the case, PingContext could last indefinitely, hence a timeout should
 // always be attached to the context passed. PingContext cancels as soon as the
 // deadline expires.
-func (dialer Dialer) PingContext(ctx context.Context, address string) (response []byte, err error) {
+func (dialer Dialer) PingContext(ctx context.Context, address string) (*message.UnconnectedPong, net.Addr, error) {
 	data, _ := (&message.UnconnectedPing{PingTime: timestamp(), ClientGUID: atomic.AddInt64(&dialerID, 1)}).MarshalBinary()
 	return dialer.pingContext(ctx, address, data)
 }
 
-func (dialer Dialer) PingOpenConnectionsContext(ctx context.Context, address string) (response []byte, err error) {
+func (dialer Dialer) PingOpenConnectionsContext(ctx context.Context, address string) (*message.UnconnectedPong, net.Addr, error) {
 	data, _ := (&message.UnconnectedPingOpenConnections{PingTime: timestamp(), ClientGUID: atomic.AddInt64(&dialerID, 1)}).MarshalBinary()
 	return dialer.pingContext(ctx, address, data)
 }
 
-func (dialer Dialer) pingContext(ctx context.Context, address string, data []byte) (response []byte, err error) {
+func (dialer Dialer) pingContext2(ctx context.Context, address string, data []byte) (response []byte, err error) {
 	conn, err := dialer.dial(ctx, address)
 	if err != nil {
 		return nil, dialer.error("ping", err)
@@ -176,6 +176,37 @@ func (dialer Dialer) pingContext(ctx context.Context, address string, data []byt
 		return nil, dialer.error("ping", fmt.Errorf("read unconnected pong: %w", err))
 	}
 	return pong.Data, nil
+}
+
+func (dialer Dialer) pingContext(ctx context.Context, address string, data []byte) (*message.UnconnectedPong, net.Addr, error) {
+	remote, err := net.ResolveUDPAddr("udp", address)
+	if err != nil {
+		return nil, nil, dialer.error("resolve", err)
+	}
+
+	conn, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		return nil, nil, dialer.error("ping", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.WriteToUDP(data, remote); err != nil {
+		return nil, nil, dialer.error("ping", err)
+	}
+
+	data = make([]byte, 1492)
+	n, addr, err := conn.ReadFromUDP(data)
+	if err != nil {
+		return nil, nil, dialer.error("ping", err)
+	}
+	if n == 0 || data[0] != message.IDUnconnectedPong {
+		return nil, nil, dialer.error("ping", fmt.Errorf("non-pong packet found (id = %v)", data[0]))
+	}
+	pong := &message.UnconnectedPong{}
+	if err := pong.UnmarshalBinary(data[1:n]); err != nil {
+		return nil, nil, dialer.error("ping", fmt.Errorf("read unconnected pong: %w", err))
+	}
+	return pong, addr, nil
 }
 
 // error wraps the error passed resulting from an operation in a *net.OpError.
