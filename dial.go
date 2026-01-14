@@ -143,13 +143,22 @@ func (dialer Dialer) PingTimeout(address string, timeout time.Duration) ([]byte,
 // always be attached to the context passed. PingContext cancels as soon as the
 // deadline expires.
 func (dialer Dialer) PingContext(ctx context.Context, address string) (response []byte, err error) {
+	data, _ := (&message.UnconnectedPing{PingTime: timestamp(), ClientGUID: atomic.AddInt64(&dialerID, 1)}).MarshalBinary()
+	return dialer.pingContext(ctx, address, data)
+}
+
+func (dialer Dialer) PingOpenConnectionsContext(ctx context.Context, address string) (response []byte, err error) {
+	data, _ := (&message.UnconnectedPingOpenConnections{PingTime: timestamp(), ClientGUID: atomic.AddInt64(&dialerID, 1)}).MarshalBinary()
+	return dialer.pingContext(ctx, address, data)
+}
+
+func (dialer Dialer) pingContext(ctx context.Context, address string, data []byte) (response []byte, err error) {
 	conn, err := dialer.dial(ctx, address)
 	if err != nil {
 		return nil, dialer.error("ping", err)
 	}
 	defer conn.Close()
 
-	data, _ := (&message.UnconnectedPing{PingTime: timestamp(), ClientGUID: atomic.AddInt64(&dialerID, 1)}).MarshalBinary()
 	if _, err := conn.Write(data); err != nil {
 		return nil, dialer.error("ping", err)
 	}
