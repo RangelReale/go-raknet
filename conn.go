@@ -96,7 +96,7 @@ type Conn struct {
 
 // newConn constructs a new connection specifically dedicated to the address
 // passed.
-func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, tickInterval time.Duration, h connectionHandler) *Conn {
+func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, pingInterval time.Duration, h connectionHandler) *Conn {
 	mtu = min(max(mtu, minMTUSize), maxMTUSize)
 	c := &Conn{
 		raddr:          raddr,
@@ -117,7 +117,7 @@ func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, tickInterval time.
 	c.ctx, c.cancelFunc = context.WithCancel(context.Background())
 	t := time.Now()
 	c.lastActivity.Store(&t)
-	go c.startTicking(tickInterval)
+	go c.startTicking(pingInterval)
 	return c
 }
 
@@ -130,15 +130,16 @@ func (conn *Conn) effectiveMTU() uint16 {
 // startTicking makes the connection start ticking, sending ACKs and pings to
 // the other end where necessary and checking if the connection should be timed
 // out.
-func (conn *Conn) startTicking(interval time.Duration) {
-	if interval == 0 {
-		interval = time.Second / 10
+func (conn *Conn) startTicking(pingInterval time.Duration) {
+	if pingInterval == 0 {
+		pingInterval = 4 * time.Second
 	}
 	var (
-		// interval = time.Second / 10
-		ticker   = time.NewTicker(interval)
-		i        int64
-		acksLeft int
+		interval   = time.Second / 10
+		ticker     = time.NewTicker(interval)
+		pingTicker = time.NewTicker(pingInterval)
+		i          int64
+		acksLeft   int
 	)
 	defer ticker.Stop()
 	for {
@@ -164,17 +165,16 @@ func (conn *Conn) startTicking(interval time.Duration) {
 				}
 				continue
 			}
-			if i%5 == 0 {
-				// Ping the other end periodically to prevent timeouts.
-				_ = conn.send(&message.ConnectedPing{PingTime: timestamp()})
+		case t := <-pingTicker.C:
+			// Ping the other end periodically to prevent timeouts.
+			_ = conn.send(&message.ConnectedPing{PingTime: timestamp()})
 
-				conn.mu.Lock()
-				if t.Sub(*conn.lastActivity.Load()) > time.Second*5+conn.retransmission.rtt(t)*2 {
-					// No activity for too long: Start timeout.
-					_ = conn.Close()
-				}
-				conn.mu.Unlock()
+			conn.mu.Lock()
+			if t.Sub(*conn.lastActivity.Load()) > time.Second*5+conn.retransmission.rtt(t)*2 {
+				// No activity for too long: Start timeout.
+				_ = conn.Close()
 			}
+			conn.mu.Unlock()
 		case <-conn.ctx.Done():
 			return
 		}

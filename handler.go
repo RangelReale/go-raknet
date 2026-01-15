@@ -223,7 +223,6 @@ func (h dialerConnectionHandler) limitsEnabled() bool {
 }
 
 func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err error) {
-	h.log().Debug("received packet", "id", fmt.Sprintf("0x%x", b[0]))
 	switch b[0] {
 	case message.IDConnectionRequest:
 		return true, errUnexpectedCR
@@ -242,6 +241,7 @@ func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err
 		// Let the other end know the connection is still alive.
 		return true, conn.send(&message.ConnectedPing{PingTime: timestamp()})
 	default:
+		h.log().Debug("received packet", "id", fmt.Sprintf("0x%x", b[0]))
 		return false, nil
 	}
 }
