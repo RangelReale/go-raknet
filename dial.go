@@ -114,6 +114,8 @@ type Dialer struct {
 	ProtocolVersion byte
 
 	Password string
+
+	TickInterval time.Duration
 }
 
 // Ping sends a ping to an address and returns the response obtained. If
@@ -286,7 +288,7 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 func (dialer Dialer) connect(ctx context.Context, state *connState) (*Conn, error) {
 	dialer.ErrorLog.Debug("connect")
 
-	conn := newConn(internal.ConnToPacketConn(state.conn), state.raddr, state.mtu, dialerConnectionHandler{l: dialer.ErrorLog})
+	conn := newConn(internal.ConnToPacketConn(state.conn), state.raddr, state.mtu, dialer.TickInterval, dialerConnectionHandler{l: dialer.ErrorLog})
 	if err := conn.send((&message.ConnectionRequest{ClientGUID: state.id, RequestTime: timestamp(), Password: dialer.Password})); err != nil {
 		return nil, dialer.error("dial", fmt.Errorf("send connection request: %w", err))
 	}

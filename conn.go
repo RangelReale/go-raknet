@@ -96,7 +96,7 @@ type Conn struct {
 
 // newConn constructs a new connection specifically dedicated to the address
 // passed.
-func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, h connectionHandler) *Conn {
+func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, tickInterval time.Duration, h connectionHandler) *Conn {
 	mtu = min(max(mtu, minMTUSize), maxMTUSize)
 	c := &Conn{
 		raddr:          raddr,
@@ -117,7 +117,7 @@ func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, h connectionHandle
 	c.ctx, c.cancelFunc = context.WithCancel(context.Background())
 	t := time.Now()
 	c.lastActivity.Store(&t)
-	go c.startTicking()
+	go c.startTicking(tickInterval)
 	return c
 }
 
@@ -130,9 +130,12 @@ func (conn *Conn) effectiveMTU() uint16 {
 // startTicking makes the connection start ticking, sending ACKs and pings to
 // the other end where necessary and checking if the connection should be timed
 // out.
-func (conn *Conn) startTicking() {
-	var (
+func (conn *Conn) startTicking(interval time.Duration) {
+	if interval == 0 {
 		interval = time.Second / 10
+	}
+	var (
+		// interval = time.Second / 10
 		ticker   = time.NewTicker(interval)
 		i        int64
 		acksLeft int
