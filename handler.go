@@ -13,6 +13,16 @@ import (
 	"github.com/sandertv/go-raknet/internal/message"
 )
 
+type PacketHandler interface {
+	Handle(conn *Conn, b []byte) (handled bool, err error)
+}
+
+type PacketHandlerFunc func(conn *Conn, b []byte) (handled bool, err error)
+
+func (f PacketHandlerFunc) Handle(conn *Conn, b []byte) (handled bool, err error) {
+	return f(conn, b)
+}
+
 type connectionHandler interface {
 	handle(conn *Conn, b []byte) (handled bool, err error)
 	limitsEnabled() bool
@@ -21,9 +31,10 @@ type connectionHandler interface {
 }
 
 type listenerConnectionHandler struct {
-	l            *Listener
-	cookieSalt   *atomic.Uint64
-	previousSalt *atomic.Uint64
+	l             *Listener
+	packetHandler PacketHandler
+	cookieSalt    *atomic.Uint64
+	previousSalt  *atomic.Uint64
 }
 
 var (
@@ -176,6 +187,15 @@ func (h listenerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, e
 		// Let the other end know the connection is still alive.
 		return true, conn.send(&message.ConnectedPing{PingTime: timestamp()})
 	default:
+		if h.packetHandler != nil {
+			handled, err = h.packetHandler.Handle(conn, b)
+			if err != nil {
+				return false, err
+			}
+			if handled {
+				return true, nil
+			}
+		}
 		return false, nil
 	}
 }
@@ -202,7 +222,10 @@ func (h listenerConnectionHandler) handleNewIncomingConnection(conn *Conn) error
 	return nil
 }
 
-type dialerConnectionHandler struct{ l *slog.Logger }
+type dialerConnectionHandler struct {
+	l             *slog.Logger
+	packetHandler PacketHandler
+}
 
 var (
 	errUnexpectedCR            = errors.New("unexpected CONNECTION_REQUEST packet")
@@ -241,6 +264,15 @@ func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err
 		// Let the other end know the connection is still alive.
 		return true, conn.send(&message.ConnectedPing{PingTime: timestamp()})
 	default:
+		if h.packetHandler != nil {
+			handled, err = h.packetHandler.Handle(conn, b)
+			if err != nil {
+				return false, err
+			}
+			if handled {
+				return true, nil
+			}
+		}
 		h.log().Debug("received packet", "id", fmt.Sprintf("0x%x", b[0]))
 		return false, nil
 	}

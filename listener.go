@@ -43,6 +43,8 @@ type ListenConfig struct {
 	BlockDuration time.Duration
 
 	ProtocolVersion byte
+
+	PacketHandler PacketHandler
 }
 
 // Listener implements a RakNet connection listener. It follows the same
@@ -112,7 +114,8 @@ func (conf ListenConfig) Listen(address string) (*Listener, error) {
 		closed:   make(chan struct{}),
 		id:       atomic.AddInt64(&listenerID, 1),
 	}
-	listener.handler = &listenerConnectionHandler{l: listener, cookieSalt: &atomic.Uint64{}, previousSalt: &atomic.Uint64{}}
+	listener.handler = &listenerConnectionHandler{l: listener, packetHandler: conf.PacketHandler,
+		cookieSalt: &atomic.Uint64{}, previousSalt: &atomic.Uint64{}}
 	listener.sec = newSecurity(conf, listener.handler)
 	listener.pongData.Store(new([]byte))
 

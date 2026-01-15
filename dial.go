@@ -111,6 +111,8 @@ type Dialer struct {
 	// This is only used for the initial connection handshake.
 	MaxTransientErrors int
 
+	PacketHandler PacketHandler
+
 	ProtocolVersion byte
 
 	Password string
@@ -288,7 +290,8 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 func (dialer Dialer) connect(ctx context.Context, state *connState) (*Conn, error) {
 	dialer.ErrorLog.Debug("connect")
 
-	conn := newConn(internal.ConnToPacketConn(state.conn), state.raddr, state.mtu, dialer.PingInterval, dialerConnectionHandler{l: dialer.ErrorLog})
+	conn := newConn(internal.ConnToPacketConn(state.conn), state.raddr, state.mtu, dialer.PingInterval,
+		dialerConnectionHandler{l: dialer.ErrorLog, packetHandler: dialer.PacketHandler})
 	if err := conn.send((&message.ConnectionRequest{ClientGUID: state.id, RequestTime: timestamp(), Password: dialer.Password})); err != nil {
 		return nil, dialer.error("dial", fmt.Errorf("send connection request: %w", err))
 	}
