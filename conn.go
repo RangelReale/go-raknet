@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -477,7 +476,6 @@ func (conn *Conn) handleDatagram(b []byte) error {
 	for len(b) > 0 {
 		n, err := conn.pk.read(b)
 		if err != nil {
-			fmt.Println(hex.Dump(b))
 			return fmt.Errorf("handle datagram: read packet: %w", err)
 		}
 		b = b[n:]
