@@ -291,7 +291,7 @@ func (dialer Dialer) connect(ctx context.Context, state *connState) (*Conn, erro
 	dialer.ErrorLog.Debug("connect")
 
 	conn := newConn(internal.ConnToPacketConn(state.conn), state.raddr, state.mtu, dialer.PingInterval,
-		dialerConnectionHandler{l: dialer.ErrorLog, packetHandler: dialer.PacketHandler})
+		dialerConnectionHandler{l: dialer.ErrorLog, clientGUID: state.id, serverGUID: state.serverGUID, packetHandler: dialer.PacketHandler})
 	if err := conn.send((&message.ConnectionRequest{ClientGUID: state.id, RequestTime: timestamp(), Password: dialer.Password})); err != nil {
 		return nil, dialer.error("dial", fmt.Errorf("send connection request: %w", err))
 	}
@@ -346,6 +346,7 @@ type connState struct {
 
 	serverSecurity bool
 	cookie         uint32
+	serverGUID     int64
 
 	ticker *time.Ticker
 
@@ -393,7 +394,7 @@ func (state *connState) discoverMTU(ctx context.Context) error {
 				"message", "IDOpenConnectionReply1",
 				"data", response)
 
-			state.serverSecurity, state.cookie = response.ServerHasSecurity, response.Cookie
+			state.serverSecurity, state.cookie, state.serverGUID = response.ServerHasSecurity, response.Cookie, response.ServerGUID
 			if response.ServerGUID == 0 || response.MTU < 400 || response.MTU > 1500 {
 				// This is an awful hack we cooked up to deal with OVH 'DDoS'
 				// protection. For some reason they send a broken MTU size
@@ -469,6 +470,7 @@ func (state *connState) openConnection(ctx context.Context) error {
 			return fmt.Errorf("read open connection reply 2: %w", err)
 		}
 		state.errorLog.Debug("[read] open connection request 2", "message", pk)
+		state.serverGUID = pk.ServerGUID
 		state.mtu = pk.MTU
 		return nil
 	}

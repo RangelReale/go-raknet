@@ -125,7 +125,7 @@ func (pk *packet) read(b []byte) (int, error) {
 	pk.split = (header & splitFlag) != 0
 	pk.reliability = reliability((header & 224) >> 5)
 
-	n := binary.BigEndian.Uint16(b[1:]) >> 3
+	n := bitsToBytes(binary.BigEndian.Uint16(b[1:]))
 	if n == 0 {
 		return 0, errors.New("invalid packet length: cannot be 0")
 	}
@@ -171,6 +171,16 @@ func (pk *packet) read(b []byte) (int, error) {
 		return 0, io.ErrUnexpectedEOF
 	}
 	return offset + int(n), nil
+}
+
+func bitsToBytes(bits uint16) uint16 {
+	if bits == 0 {
+		return 0
+	}
+	// (bits + 7) ensures that any non-zero remainder after division by 8
+	// results in the integer division rounding up.
+	// The division by 8 is then performed by a right bit shift of 3 (2^3 = 8).
+	return (bits + 7) >> 3
 }
 
 const (

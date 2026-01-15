@@ -224,6 +224,8 @@ func (h listenerConnectionHandler) handleNewIncomingConnection(conn *Conn) error
 
 type dialerConnectionHandler struct {
 	l             *slog.Logger
+	clientGUID    int64
+	serverGUID    int64
 	packetHandler PacketHandler
 }
 

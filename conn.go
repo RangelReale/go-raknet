@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -119,6 +120,22 @@ func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, pingInterval time.
 	c.lastActivity.Store(&t)
 	go c.startTicking(pingInterval)
 	return c
+}
+
+func (conn *Conn) ClientGUID() int64 {
+	switch h := conn.handler.(type) {
+	case dialerConnectionHandler:
+		return h.clientGUID
+	}
+	return -1
+}
+
+func (conn *Conn) ServerGUID() int64 {
+	switch h := conn.handler.(type) {
+	case dialerConnectionHandler:
+		return h.serverGUID
+	}
+	return -1
 }
 
 // effectiveMTU returns the mtu size without the space allocated for IP and
@@ -460,6 +477,7 @@ func (conn *Conn) handleDatagram(b []byte) error {
 	for len(b) > 0 {
 		n, err := conn.pk.read(b)
 		if err != nil {
+			fmt.Println(hex.Dump(b))
 			return fmt.Errorf("handle datagram: read packet: %w", err)
 		}
 		b = b[n:]
