@@ -20,6 +20,9 @@ func (pk *ConnectionRequest) UnmarshalBinary(data []byte) error {
 	pk.ClientGUID = int64(binary.BigEndian.Uint64(data))
 	pk.RequestTime = int64(binary.BigEndian.Uint64(data[8:]))
 	pk.Secure = data[16] != 0
+	if pk.Secure && len(data) >= 17 {
+		pk.Password = string(data[17:])
+	}
 	return nil
 }
 
