@@ -19,9 +19,17 @@ func (pk *UnconnectedPong) UnmarshalBinary(data []byte) error {
 	pk.PingTime = int64(binary.BigEndian.Uint64(data))
 	pk.ServerGUID = int64(binary.BigEndian.Uint64(data[8:]))
 	// Magic: 16 bytes.
-	n := binary.BigEndian.Uint16(data[32:])
-	dataSize := min(int(34+n), len(data))
-	pk.Data = append([]byte(nil), data[34:dataSize]...)
+
+	// Two conventions exist for the payload following the magic. Minecraft
+	// length-prefixes it with a uint16; stock RakNet (RakPeer::OnUnconnectedPing)
+	// appends offlinePingResponse raw, running to the end of the packet. Trust
+	// the prefix only when it accounts for exactly the remaining bytes —
+	// otherwise the first two payload bytes get consumed as a bogus length.
+	if n := int(binary.BigEndian.Uint16(data[32:])); n == len(data)-34 {
+		pk.Data = append([]byte(nil), data[34:34+n]...)
+	} else {
+		pk.Data = append([]byte(nil), data[32:]...)
+	}
 	return nil
 }
 
